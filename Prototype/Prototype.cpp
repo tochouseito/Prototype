@@ -1,12 +1,19 @@
 // Prototype.cpp : このファイルには 'main' 関数が含まれています。プログラム実行の開始と終了がそこで行われます。
 //
 
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+
+#pragma warning(disable : 4189)
+#pragma warning(disable : 4201)
+
 #include <iostream>
+#include <windows.h>
 
 int main()
 {
-    std::cout << "Hello World!\n";
-	std::wcout << L"こんにちは！\n";
+    SetConsoleOutputCP(CP_UTF8);
+    std::cout << "こんにちは！\n";
 }
 
 // プログラムの実行: Ctrl + F5 または [デバッグ] > [デバッグなしで開始] メニュー
