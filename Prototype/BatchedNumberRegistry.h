@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <span>
+#include <utility>
 
 template <class T>
 class BatchedRegistry final
@@ -60,6 +61,26 @@ public:
         return result;
     }
 
+    [[nodiscard]] InsertGroupResult insert_group(std::vector<item_type>&& a_group)
+    {
+        // 1) batchId を発行
+        const batch_id_type batchId = generate_batch_id();
+
+        // 2) バッチ情報を作成
+        BatchInfo batchInfo{};
+        batchInfo.itemIds.reserve(a_group.size());
+
+        // 3) 戻り値を準備
+        InsertGroupResult result{};
+        result.batchId = batchId;
+        append_items_to_batch_move(batchId, batchInfo, std::move(a_group), result.itemIds);
+
+        // 4) バッチ登録
+        m_batches.emplace(batchId, std::move(batchInfo));
+
+        return result;
+    }
+
     [[nodiscard]] InsertGroupResult append_to_group(batch_id_type a_batchId, std::span<const item_type> a_group)
     {
         // 1) 既存 batch を探す
@@ -76,6 +97,22 @@ public:
         return result;
     }
 
+    [[nodiscard]] InsertGroupResult append_to_group(batch_id_type a_batchId, std::vector<item_type>&& a_group)
+    {
+        // 1) 既存 batch を探す
+        auto batchIt = m_batches.find(a_batchId);
+        if (batchIt == m_batches.end())
+        {
+            return {};
+        }
+
+        // 2) 戻り値を準備して追記
+        InsertGroupResult result{};
+        result.batchId = a_batchId;
+        append_items_to_batch_move(a_batchId, batchIt->second, std::move(a_group), result.itemIds);
+        return result;
+    }
+
     [[nodiscard]] item_id_type append_item_to_group(batch_id_type a_batchId, const item_type& a_value)
     {
         // 1) 既存 batch を探す
@@ -87,6 +124,19 @@ public:
 
         // 2) 1 要素だけ追記
         return append_item_to_batch(a_batchId, batchIt->second, a_value);
+    }
+
+    [[nodiscard]] item_id_type append_item_to_group(batch_id_type a_batchId, item_type&& a_value)
+    {
+        // 1) 既存 batch を探す
+        auto batchIt = m_batches.find(a_batchId);
+        if (batchIt == m_batches.end())
+        {
+            return k_invalidItemId;
+        }
+
+        // 2) 1 要素だけ追記
+        return append_item_to_batch(a_batchId, batchIt->second, std::move(a_value));
     }
 
     [[nodiscard]] bool erase_item(item_id_type a_itemId)
@@ -246,22 +296,23 @@ public:
     }
 
 private:
+    template <class U>
     [[nodiscard]] item_id_type append_item_to_batch(
         batch_id_type a_batchId,
         BatchInfo& a_batchInfo,
-        const item_type& a_value)
+        U&& a_value)
     {
         const item_id_type itemId = generate_item_id();
         const size_t batchPosition = a_batchInfo.itemIds.size();
 
         StoredItem item{};
-        item.value = a_value;
+        item.value = std::forward<U>(a_value);
         item.batchId = a_batchId;
         item.itemId = itemId;
         item.batchPosition = batchPosition;
 
         const size_t itemIndex = m_items.size();
-        m_items.push_back(item);
+        m_items.push_back(std::move(item));
         m_itemToIndex[itemId] = itemIndex;
 
         a_batchInfo.itemIds.push_back(itemId);
@@ -280,6 +331,22 @@ private:
         for (const item_type& value : a_group)
         {
             const item_id_type itemId = append_item_to_batch(a_batchId, a_batchInfo, value);
+            a_outItemIds.push_back(itemId);
+        }
+    }
+
+    void append_items_to_batch_move(
+        batch_id_type a_batchId,
+        BatchInfo& a_batchInfo,
+        std::vector<item_type>&& a_group,
+        std::vector<item_id_type>& a_outItemIds)
+    {
+        a_batchInfo.itemIds.reserve(a_batchInfo.itemIds.size() + a_group.size());
+        a_outItemIds.reserve(a_group.size());
+
+        for (item_type& value : a_group)
+        {
+            const item_id_type itemId = append_item_to_batch(a_batchId, a_batchInfo, std::move(value));
             a_outItemIds.push_back(itemId);
         }
     }

@@ -8,6 +8,7 @@
 #pragma warning(disable : 4201)
 
 #include <iostream>
+#include <utility>
 #include <string>
 #include <windows.h>
 #include <assert.h>
@@ -24,14 +25,14 @@ int main()
     
     const std::vector<std::string> b = { "red", "green", "blue" };
     const std::vector<std::string> c = { "circle", "square", "triangle" };
-    const std::vector<std::string> cExtra = { "hexagon", "star" };
-    const std::string cSingleExtra = "octagon";
+    std::vector<std::string> cExtra = { "hexagon", "star" };
+    std::string cSingleExtra = "octagon";
 
     const auto bResult = container.insert_group(b);
     const auto cResult1 = container.insert_group(c);
     const auto cResult2 = container.insert_group(c);
-    const auto cAppendResult = container.append_to_group(cResult1.batchId, cExtra);
-    const auto cSingleAppendItemId = container.append_item_to_group(cResult1.batchId, cSingleExtra);
+    const auto cAppendResult = container.append_to_group(cResult1.batchId, std::move(cExtra));
+    const auto cSingleAppendItemId = container.append_item_to_group(cResult1.batchId, std::move(cSingleExtra));
 
     if (cAppendResult.batchId == Registry::k_invalidBatchId)
     {
