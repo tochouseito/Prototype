@@ -139,6 +139,9 @@
   <ItemGroup>
     <ClCompile Include="Prototype.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="BatchedNumberRegistry.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

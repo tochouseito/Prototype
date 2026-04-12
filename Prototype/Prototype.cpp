@@ -8,21 +8,66 @@
 #pragma warning(disable : 4201)
 
 #include <iostream>
+#include <string>
 #include <windows.h>
+#include <assert.h>
+
+#include "BatchedNumberRegistry.h"
 
 int main()
 {
     SetConsoleOutputCP(CP_UTF8);
-    std::cout << "こんにちは！\n";
+
+    using Registry = BatchedRegistry<std::string>;
+
+	Registry container;
+    
+    const std::vector<std::string> b = { "red", "green", "blue" };
+    const std::vector<std::string> c = { "circle", "square", "triangle" };
+    const std::vector<std::string> cExtra = { "hexagon", "star" };
+    const std::string cSingleExtra = "octagon";
+
+    const auto bResult = container.insert_group(b);
+    const auto cResult1 = container.insert_group(c);
+    const auto cResult2 = container.insert_group(c);
+    const auto cAppendResult = container.append_to_group(cResult1.batchId, cExtra);
+    const auto cSingleAppendItemId = container.append_item_to_group(cResult1.batchId, cSingleExtra);
+
+    if (cAppendResult.batchId == Registry::k_invalidBatchId)
+    {
+        assert(false && "Failed to append to group.");
+    }
+
+    if (cSingleAppendItemId == Registry::k_invalidItemId)
+    {
+        assert(false && "Failed to append item to group.");
+    }
+
+    // 1回目の c の中の "square" を個別削除
+    bool erased = container.erase_item(cResult1.itemIds[1]);
+
+	if (!erased)
+    {
+		assert(false && "Failed to erase item.");
+    }
+
+    // 2回目の c をグループごと削除
+    bool groupErased = container.erase_group(cResult2.batchId);
+
+	if (!groupErased)
+    {
+		assert(false && "Failed to erase group.");
+    }
+
+    container.for_each_item(
+        [](uint64_t a_itemId, uint64_t a_batchId, const std::string& a_value)
+        {
+            std::cout
+                << "itemId=" << a_itemId
+                << ", batchId=" << a_batchId
+                << ", value=" << a_value
+                << '\n';
+        });
+
+    return 0;
 }
-
-// プログラムの実行: Ctrl + F5 または [デバッグ] > [デバッグなしで開始] メニュー
-// プログラムのデバッグ: F5 または [デバッグ] > [デバッグの開始] メニュー
-
-// 作業を開始するためのヒント: 
-//    1. ソリューション エクスプローラー ウィンドウを使用してファイルを追加/管理します 
-//   2. チーム エクスプローラー ウィンドウを使用してソース管理に接続します
-//   3. 出力ウィンドウを使用して、ビルド出力とその他のメッセージを表示します
-//   4. エラー一覧ウィンドウを使用してエラーを表示します
-//   5. [プロジェクト] > [新しい項目の追加] と移動して新しいコード ファイルを作成するか、[プロジェクト] > [既存の項目の追加] と移動して既存のコード ファイルをプロジェクトに追加します
-//   6. 後ほどこのプロジェクトを再び開く場合、[ファイル] > [開く] > [プロジェクト] と移動して .sln ファイルを選択します
