@@ -134,6 +134,19 @@ int main()
         assert(false && "Failed to visit group.");
     }
 
+    std::cout << "\n[Tag Access]\n";
+    const std::vector<GameObject> shapeObjects = world.find_objects_by_tag("Shape");
+    for (const GameObject& object : shapeObjects)
+    {
+        print_object(object.entity_id(), world.source_scene_id(object.entity_id()),
+            object);
+    }
+
+    if (shapeObjects.size() != 5)
+    {
+        assert(false && "Unexpected tag search result.");
+    }
+
     std::cout << "\n[All Items Access]\n";
     world.for_each_object(print_object);
 

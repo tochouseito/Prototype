@@ -9,8 +9,10 @@
 #include <array>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -114,6 +116,7 @@ namespace Cue::GameCore
 
             const bool unlinked = unlink_object_from_scene(a_entityId);
             (void)unlinked;
+            remove_object_from_tag_index(a_entityId, get_object_tag(a_entityId));
 
             record->isAlive = false;
             record->sourceSceneId = k_invalidSceneId;
@@ -192,6 +195,35 @@ namespace Cue::GameCore
         [[nodiscard]] bool contains_scene(SceneId a_sceneId) const noexcept
         {
             return m_scenes.find(a_sceneId) != m_scenes.end();
+        }
+
+        [[nodiscard]] std::string get_object_tag(EntityId a_entityId) const
+        {
+            const BaseComponent* base = get_component<BaseComponent>(a_entityId);
+            if (base == nullptr)
+            {
+                return {};
+            }
+
+            return base->tag;
+        }
+
+        void set_object_tag(EntityId a_entityId, std::string_view a_tag)
+        {
+            BaseComponent* base = get_component<BaseComponent>(a_entityId);
+            if (base == nullptr)
+            {
+                throw std::runtime_error("GameWorld BaseComponent is missing.");
+            }
+
+            if (base->tag == a_tag)
+            {
+                return;
+            }
+
+            remove_object_from_tag_index(a_entityId, base->tag);
+            base->tag = std::string(a_tag);
+            add_object_to_tag_index(a_entityId, base->tag);
         }
 
         [[nodiscard]] bool is_alive(EntityId a_entityId,
@@ -345,6 +377,30 @@ namespace Cue::GameCore
             }
         }
 
+        [[nodiscard]] std::vector<GameObject> find_objects_by_tag(
+            std::string_view a_tag)
+        {
+            const auto it = m_tagIndex.find(std::string(a_tag));
+            if (it == m_tagIndex.end())
+            {
+                return {};
+            }
+
+            std::vector<GameObject> objects{};
+            objects.reserve(it->second.size());
+            for (const EntityId entity : it->second)
+            {
+                if (!contains_object(entity))
+                {
+                    continue;
+                }
+
+                objects.push_back(make_handle(entity));
+            }
+
+            return objects;
+        }
+
     private:
         [[nodiscard]] SceneId generate_scene_id()
         {
@@ -410,6 +466,7 @@ namespace Cue::GameCore
             base->isActiveSelf = a_isActive;
             base->isPersistent = a_isPersistent;
 
+            add_object_to_tag_index(a_entityId, base->tag);
             m_ecs.set_entity_active(a_entityId, a_isActive);
         }
 
@@ -603,8 +660,30 @@ namespace Cue::GameCore
             return &m_entityRecords[a_entityId];
         }
 
+        void add_object_to_tag_index(EntityId a_entityId, const std::string& a_tag)
+        {
+            m_tagIndex[a_tag].insert(a_entityId);
+        }
+
+        void remove_object_from_tag_index(EntityId a_entityId,
+            const std::string& a_tag)
+        {
+            const auto it = m_tagIndex.find(a_tag);
+            if (it == m_tagIndex.end())
+            {
+                return;
+            }
+
+            it->second.erase(a_entityId);
+            if (it->second.empty())
+            {
+                m_tagIndex.erase(it);
+            }
+        }
+
         ECS::ECSManager m_ecs{};
         std::unordered_map<SceneId, SceneInstance> m_scenes{};
+        std::unordered_map<std::string, std::unordered_set<EntityId>> m_tagIndex{};
         std::vector<EntityRecord> m_entityRecords{};
         SceneId m_nextSceneId = 1;
         size_t m_liveObjectCount = 0;
@@ -620,6 +699,26 @@ namespace Cue::GameCore
     inline bool GameObject::is_valid() const noexcept
     {
         return m_world != nullptr && m_world->is_alive(m_entityId, m_generation);
+    }
+
+    inline std::string GameObject::tag() const
+    {
+        if (!is_valid())
+        {
+            return {};
+        }
+
+        return m_world->get_object_tag(m_entityId);
+    }
+
+    inline void GameObject::set_tag(std::string_view a_tag)
+    {
+        if (!is_valid())
+        {
+            throw std::runtime_error("GameObject is not valid.");
+        }
+
+        m_world->set_object_tag(m_entityId, a_tag);
     }
 
     template <typename T>
