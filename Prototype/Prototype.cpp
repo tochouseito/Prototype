@@ -91,6 +91,21 @@ int main()
         make_transform(60.0f, 0.0f, 0.0f));
 
     GameWorld world;
+    const GameObject enemy0 = world.create_object("Enemy", "Actor");
+    const GameObject enemy1 = world.create_object("Enemy", "Actor");
+    const GameObject enemy2 = world.create_object("Enemy", "Actor");
+    const GameObject unnamedObject = world.create_object("", "Actor");
+
+    if (enemy0.name() != "Enemy" || enemy1.name() != "Enemy(1)" ||
+        enemy2.name() != "Enemy(2)")
+    {
+        assert(false && "Unexpected unique name assignment.");
+    }
+
+    if (unnamedObject.name() != "GameObject")
+    {
+        assert(false && "Unexpected default object name.");
+    }
 
     const auto colorScene = world.load_scene(colors);
     const auto shapeScene1 = world.load_scene(shapes);
@@ -145,6 +160,29 @@ int main()
     if (shapeObjects.size() != 5)
     {
         assert(false && "Unexpected tag search result.");
+    }
+
+    std::cout << "\n[Name Access]\n";
+    const GameObject triangleObject = world.find_object_by_name("triangle");
+    if (!triangleObject.is_valid())
+    {
+        assert(false && "Failed to find object by name.");
+    }
+    print_object(triangleObject.entity_id(),
+        world.source_scene_id(triangleObject.entity_id()), triangleObject);
+
+    std::cout << "\n[Name Series Access]\n";
+    const std::vector<GameObject> enemyObjects =
+        world.find_objects_by_name_series("Enemy");
+    for (const GameObject& object : enemyObjects)
+    {
+        print_object(object.entity_id(), world.source_scene_id(object.entity_id()),
+            object);
+    }
+
+    if (enemyObjects.size() != 3)
+    {
+        assert(false && "Failed to find object name series.");
     }
 
     std::cout << "\n[All Items Access]\n";

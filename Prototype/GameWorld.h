@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -116,6 +117,7 @@ namespace Cue::GameCore
 
             const bool unlinked = unlink_object_from_scene(a_entityId);
             (void)unlinked;
+            remove_object_from_name_index(a_entityId, get_object_name(a_entityId));
             remove_object_from_tag_index(a_entityId, get_object_tag(a_entityId));
 
             record->isAlive = false;
@@ -206,6 +208,37 @@ namespace Cue::GameCore
             }
 
             return base->tag;
+        }
+
+        [[nodiscard]] std::string get_object_name(EntityId a_entityId) const
+        {
+            const BaseComponent* base = get_component<BaseComponent>(a_entityId);
+            if (base == nullptr)
+            {
+                return {};
+            }
+
+            return base->name;
+        }
+
+        void set_object_name(EntityId a_entityId, std::string_view a_name)
+        {
+            BaseComponent* base = get_component<BaseComponent>(a_entityId);
+            if (base == nullptr)
+            {
+                throw std::runtime_error("GameWorld BaseComponent is missing.");
+            }
+
+            const std::string resolvedName =
+                make_unique_object_name(a_name, a_entityId);
+            if (base->name == resolvedName)
+            {
+                return;
+            }
+
+            remove_object_from_name_index(a_entityId, base->name);
+            base->name = resolvedName;
+            add_object_to_name_index(a_entityId, base->name);
         }
 
         void set_object_tag(EntityId a_entityId, std::string_view a_tag)
@@ -398,6 +431,104 @@ namespace Cue::GameCore
                 objects.push_back(make_handle(entity));
             }
 
+            std::sort(objects.begin(), objects.end(),
+                [](const GameObject& a_left, const GameObject& a_right) {
+                    return a_left.entity_id() < a_right.entity_id();
+                });
+
+            return objects;
+        }
+
+        [[nodiscard]] std::vector<GameObject> find_objects_by_name(
+            std::string_view a_name)
+        {
+            const auto it = m_nameIndex.find(std::string(a_name));
+            if (it == m_nameIndex.end())
+            {
+                return {};
+            }
+
+            std::vector<GameObject> objects{};
+            objects.reserve(it->second.size());
+            for (const EntityId entity : it->second)
+            {
+                if (!contains_object(entity))
+                {
+                    continue;
+                }
+
+                objects.push_back(make_handle(entity));
+            }
+
+            std::sort(objects.begin(), objects.end(),
+                [](const GameObject& a_left, const GameObject& a_right) {
+                    return a_left.entity_id() < a_right.entity_id();
+                });
+
+            return objects;
+        }
+
+        [[nodiscard]] GameObject find_object_by_name(std::string_view a_name)
+        {
+            std::vector<GameObject> objects = find_objects_by_name(a_name);
+            if (objects.empty())
+            {
+                return {};
+            }
+
+            return objects.front();
+        }
+
+        [[nodiscard]] std::vector<GameObject> find_objects_by_name_series(
+            std::string_view a_baseName)
+        {
+            const std::string normalizedBaseName =
+                normalize_object_name(a_baseName);
+
+            std::vector<GameObject> objects{};
+            for (const auto& [name, entityIds] : m_nameIndex)
+            {
+                std::uint32_t seriesIndex = 0;
+                if (!try_get_name_series_index(name, normalizedBaseName, seriesIndex))
+                {
+                    continue;
+                }
+
+                for (const EntityId entity : entityIds)
+                {
+                    if (!contains_object(entity))
+                    {
+                        continue;
+                    }
+
+                    objects.push_back(make_handle(entity));
+                }
+            }
+
+            std::sort(objects.begin(), objects.end(),
+                [this, &normalizedBaseName](
+                    const GameObject& a_left, const GameObject& a_right) {
+                    std::uint32_t leftSeriesIndex = 0;
+                    std::uint32_t rightSeriesIndex = 0;
+                    const bool leftMatched = try_get_name_series_index(
+                        get_object_name(a_left.entity_id()), normalizedBaseName,
+                        leftSeriesIndex);
+                    const bool rightMatched = try_get_name_series_index(
+                        get_object_name(a_right.entity_id()), normalizedBaseName,
+                        rightSeriesIndex);
+
+                    if (leftMatched != rightMatched)
+                    {
+                        return leftMatched;
+                    }
+                    if (leftSeriesIndex != rightSeriesIndex)
+                    {
+                        return leftSeriesIndex < rightSeriesIndex;
+                    }
+
+                    return a_left.entity_id() < a_right.entity_id();
+                });
+
             return objects;
         }
 
@@ -449,6 +580,15 @@ namespace Cue::GameCore
             bool a_isPersistent)
         {
             BaseComponent* base = m_ecs.get_component<BaseComponent>(a_entityId);
+            std::string previousName{};
+            std::string previousTag{};
+            const bool hadBaseComponent = base != nullptr;
+            if (hadBaseComponent)
+            {
+                previousName = base->name;
+                previousTag = base->tag;
+            }
+
             if (base == nullptr)
             {
                 base = m_ecs.add_component<BaseComponent>(a_entityId);
@@ -459,13 +599,24 @@ namespace Cue::GameCore
                 throw std::runtime_error("GameWorld failed to initialize BaseComponent.");
             }
 
-            base->name = std::string(a_name);
+            base->name = make_unique_object_name(a_name, a_entityId);
             base->tag = std::string(a_tag);
             base->owningSceneId = a_owningSceneId;
             base->parent = a_parent;
             base->isActiveSelf = a_isActive;
             base->isPersistent = a_isPersistent;
 
+            if (hadBaseComponent && previousName != base->name)
+            {
+                remove_object_from_name_index(a_entityId, previousName);
+            }
+
+            if (hadBaseComponent && previousTag != base->tag)
+            {
+                remove_object_from_tag_index(a_entityId, previousTag);
+            }
+
+            add_object_to_name_index(a_entityId, base->name);
             add_object_to_tag_index(a_entityId, base->tag);
             m_ecs.set_entity_active(a_entityId, a_isActive);
         }
@@ -665,6 +816,112 @@ namespace Cue::GameCore
             m_tagIndex[a_tag].insert(a_entityId);
         }
 
+        void add_object_to_name_index(EntityId a_entityId, const std::string& a_name)
+        {
+            m_nameIndex[a_name].insert(a_entityId);
+        }
+
+        [[nodiscard]] std::string normalize_object_name(
+            std::string_view a_name) const
+        {
+            if (a_name.empty())
+            {
+                return "GameObject";
+            }
+
+            return std::string(a_name);
+        }
+
+        [[nodiscard]] bool is_name_taken(std::string_view a_name,
+            EntityId a_ignoredEntityId = k_invalidEntityId) const
+        {
+            const auto it = m_nameIndex.find(std::string(a_name));
+            if (it == m_nameIndex.end())
+            {
+                return false;
+            }
+
+            for (const EntityId entity : it->second)
+            {
+                if (entity == a_ignoredEntityId)
+                {
+                    continue;
+                }
+                if (contains_object(entity))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        [[nodiscard]] std::string make_unique_object_name(
+            std::string_view a_requestedName,
+            EntityId a_ignoredEntityId = k_invalidEntityId) const
+        {
+            const std::string baseName = normalize_object_name(a_requestedName);
+            if (!is_name_taken(baseName, a_ignoredEntityId))
+            {
+                return baseName;
+            }
+
+            std::uint32_t suffix = 1;
+            while (true)
+            {
+                const std::string candidate =
+                    baseName + "(" + std::to_string(suffix) + ")";
+                if (!is_name_taken(candidate, a_ignoredEntityId))
+                {
+                    return candidate;
+                }
+                ++suffix;
+            }
+        }
+
+        [[nodiscard]] bool try_get_name_series_index(const std::string& a_name,
+            std::string_view a_baseName, std::uint32_t& a_outSeriesIndex) const
+        {
+            if (a_name == a_baseName)
+            {
+                a_outSeriesIndex = 0;
+                return true;
+            }
+
+            if (!a_name.starts_with(a_baseName) || a_name.size() <= a_baseName.size() + 2)
+            {
+                return false;
+            }
+
+            if (a_name[a_baseName.size()] != '(' || a_name.back() != ')')
+            {
+                return false;
+            }
+
+            const size_t digitsBegin = a_baseName.size() + 1;
+            const size_t digitsCount = a_name.size() - digitsBegin - 1;
+            if (digitsCount == 0)
+            {
+                return false;
+            }
+
+            std::uint32_t seriesIndex = 0;
+            for (size_t i = digitsBegin; i < a_name.size() - 1; ++i)
+            {
+                const unsigned char ch = static_cast<unsigned char>(a_name[i]);
+                if (!std::isdigit(ch))
+                {
+                    return false;
+                }
+
+                seriesIndex =
+                    (seriesIndex * 10u) + static_cast<std::uint32_t>(ch - '0');
+            }
+
+            a_outSeriesIndex = seriesIndex;
+            return true;
+        }
+
         void remove_object_from_tag_index(EntityId a_entityId,
             const std::string& a_tag)
         {
@@ -681,8 +938,25 @@ namespace Cue::GameCore
             }
         }
 
+        void remove_object_from_name_index(EntityId a_entityId,
+            const std::string& a_name)
+        {
+            const auto it = m_nameIndex.find(a_name);
+            if (it == m_nameIndex.end())
+            {
+                return;
+            }
+
+            it->second.erase(a_entityId);
+            if (it->second.empty())
+            {
+                m_nameIndex.erase(it);
+            }
+        }
+
         ECS::ECSManager m_ecs{};
         std::unordered_map<SceneId, SceneInstance> m_scenes{};
+        std::unordered_map<std::string, std::unordered_set<EntityId>> m_nameIndex{};
         std::unordered_map<std::string, std::unordered_set<EntityId>> m_tagIndex{};
         std::vector<EntityRecord> m_entityRecords{};
         SceneId m_nextSceneId = 1;
@@ -699,6 +973,26 @@ namespace Cue::GameCore
     inline bool GameObject::is_valid() const noexcept
     {
         return m_world != nullptr && m_world->is_alive(m_entityId, m_generation);
+    }
+
+    inline std::string GameObject::name() const
+    {
+        if (!is_valid())
+        {
+            return {};
+        }
+
+        return m_world->get_object_name(m_entityId);
+    }
+
+    inline void GameObject::set_name(std::string_view a_name)
+    {
+        if (!is_valid())
+        {
+            throw std::runtime_error("GameObject is not valid.");
+        }
+
+        m_world->set_object_name(m_entityId, a_name);
     }
 
     inline std::string GameObject::tag() const

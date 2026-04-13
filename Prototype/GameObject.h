@@ -20,6 +20,8 @@ namespace Cue::GameCore
         [[nodiscard]] explicit operator bool() const noexcept { return is_valid(); }
         [[nodiscard]] EntityId entity_id() const noexcept { return m_entityId; }
         [[nodiscard]] Generation generation() const noexcept { return m_generation; }
+        [[nodiscard]] std::string name() const;
+        void set_name(std::string_view a_name);
         [[nodiscard]] std::string tag() const;
         void set_tag(std::string_view a_tag);
 
