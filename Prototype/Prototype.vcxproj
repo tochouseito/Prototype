@@ -149,6 +149,8 @@
     <ClInclude Include="SceneAsset.h" />
     <ClInclude Include="SceneInstance.h" />
     <ClInclude Include="GameObject.h" />
+    <ClInclude Include="Components.h" />
+    <ClInclude Include="GameObjectProto.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
