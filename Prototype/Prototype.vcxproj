@@ -149,8 +149,13 @@
     <ClInclude Include="SceneAsset.h" />
     <ClInclude Include="SceneInstance.h" />
     <ClInclude Include="GameObject.h" />
+    <ClInclude Include="GameCoreTypes.h" />
+    <ClInclude Include="BaseComponent.h" />
     <ClInclude Include="Components.h" />
     <ClInclude Include="GameObjectProto.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="cue_engine_gameworld_design.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

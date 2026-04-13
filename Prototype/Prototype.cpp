@@ -7,103 +7,141 @@
 #pragma warning(disable : 4189)
 #pragma warning(disable : 4201)
 
-#include <iostream>
-#include <utility>
-#include <string>
-#include <windows.h>
 #include <assert.h>
+#include <iostream>
+#include <string>
+#include <utility>
+#include <vector>
+#include <windows.h>
 
-#include "BatchedRegistry.h"
+#include "Components.h"
+#include "GameWorld.h"
 
 int main()
 {
     SetConsoleOutputCP(CP_UTF8);
 
-    using Registry = BatchedRegistry<std::string>;
+    using Cue::ECS::TransformComponent;
+    using Cue::GameCore::BaseComponent;
+    using Cue::GameCore::GameObject;
+    using Cue::GameCore::GameWorld;
+    using Cue::GameCore::ObjectDefinition;
+    using Cue::GameCore::SceneAsset;
 
-	Registry container;
-    
-    const std::vector<std::string> b = { "red", "green", "blue" };
-    const std::vector<std::string> c = { "circle", "square", "triangle" };
-    std::vector<std::string> cExtra = { "hexagon", "star" };
-    std::string cSingleExtra = "octagon";
-
-    const auto bResult = container.insert_group(b);
-    const auto cResult1 = container.insert_group(c);
-    const auto cResult2 = container.insert_group(c);
-    const auto cAppendResult = container.append_to_group(cResult1.batchId, std::move(cExtra));
-    const auto cSingleAppendItemId = container.append_item_to_group(cResult1.batchId, std::move(cSingleExtra));
-
-    if (cAppendResult.batchId == Registry::k_invalidBatchId)
+    auto make_transform = [](float a_x, float a_y, float a_z)
     {
-        assert(false && "Failed to append to group.");
+        TransformComponent transform{};
+        transform.x = a_x;
+        transform.y = a_y;
+        transform.z = a_z;
+        return transform;
+    };
+
+    auto print_object = [](uint32_t a_entityId, uint64_t a_sceneId,
+                            GameObject a_object)
+    {
+        const BaseComponent* base = a_object.get_component<BaseComponent>();
+        const TransformComponent* transform =
+            a_object.get_component<TransformComponent>();
+
+        std::cout
+            << "entityId=" << a_entityId
+            << ", sceneId=" << a_sceneId
+            << ", name=" << (base ? base->name : "<missing>")
+            << ", tag=" << (base ? base->tag : "<missing>");
+
+        if (transform != nullptr)
+        {
+            std::cout
+                << ", position=("
+                << transform->x << ", "
+                << transform->y << ", "
+                << transform->z << ")";
+        }
+
+        std::cout << '\n';
+    };
+
+    SceneAsset colors("Colors");
+    auto& red = colors.add_object("red", "Color");
+    red.prototype.add_component<TransformComponent>(make_transform(1.0f, 0.0f, 0.0f));
+    auto& green = colors.add_object("green", "Color");
+    green.prototype.add_component<TransformComponent>(make_transform(0.0f, 1.0f, 0.0f));
+    auto& blue = colors.add_object("blue", "Color");
+    blue.prototype.add_component<TransformComponent>(make_transform(0.0f, 0.0f, 1.0f));
+
+    SceneAsset shapes("Shapes");
+    auto& circle = shapes.add_object("circle", "Shape");
+    circle.prototype.add_component<TransformComponent>(make_transform(10.0f, 0.0f, 0.0f));
+    auto& square = shapes.add_object("square", "Shape");
+    square.prototype.add_component<TransformComponent>(make_transform(20.0f, 0.0f, 0.0f));
+    auto& triangle = shapes.add_object("triangle", "Shape");
+    triangle.prototype.add_component<TransformComponent>(make_transform(30.0f, 0.0f, 0.0f));
+
+    std::vector<ObjectDefinition> shapeExtras{};
+    shapeExtras.emplace_back("hexagon", "Shape");
+    shapeExtras.back().prototype.add_component<TransformComponent>(
+        make_transform(40.0f, 0.0f, 0.0f));
+    shapeExtras.emplace_back("star", "Shape");
+    shapeExtras.back().prototype.add_component<TransformComponent>(
+        make_transform(50.0f, 0.0f, 0.0f));
+
+    ObjectDefinition octagon("octagon", "Shape");
+    octagon.prototype.add_component<TransformComponent>(
+        make_transform(60.0f, 0.0f, 0.0f));
+
+    GameWorld world;
+
+    const auto colorScene = world.load_scene(colors);
+    const auto shapeScene1 = world.load_scene(shapes);
+    const auto shapeScene2 = world.load_scene(shapes);
+    const auto shapeAppendResult =
+        world.append_to_scene(shapeScene1.sceneId, shapeExtras);
+    const auto octagonObject =
+        world.append_object_to_scene(shapeScene1.sceneId, octagon);
+
+    if (!world.contains_scene(shapeAppendResult.sceneId))
+    {
+        assert(false && "Failed to append objects to scene.");
     }
 
-    if (cSingleAppendItemId == Registry::k_invalidItemId)
+    if (!octagonObject.is_valid())
     {
-        assert(false && "Failed to append item to group.");
+        assert(false && "Failed to append object to scene.");
     }
 
-    // 1回目の c の中の "square" を個別削除
-    bool erased = container.erase_item(cResult1.itemIds[1]);
+    world.destroy_object(shapeScene1.objects[1].entity_id());
 
-	if (!erased)
+    const bool sceneUnloaded = world.unload_scene(shapeScene2.sceneId);
+    if (!sceneUnloaded)
     {
-		assert(false && "Failed to erase item.");
-    }
-
-    // 2回目の c をグループごと削除
-    bool groupErased = container.erase_group(cResult2.batchId);
-
-    if (!groupErased)
-    {
-		assert(false && "Failed to erase group.");
+        assert(false && "Failed to unload scene.");
     }
 
     std::cout << "[Single Item Access]\n";
-    const bool itemVisited = container.visit_item(
-        cSingleAppendItemId,
-        [](uint64_t a_itemId, uint64_t a_batchId, const std::string& a_value)
-        {
-            std::cout
-                << "itemId=" << a_itemId
-                << ", batchId=" << a_batchId
-                << ", value=" << a_value
-                << '\n';
-        });
-
+    const bool itemVisited =
+        world.visit_object(octagonObject.entity_id(), print_object);
     if (!itemVisited)
     {
         assert(false && "Failed to visit item.");
     }
 
     std::cout << "\n[Group Access]\n";
-    const bool groupVisited = container.for_each_item_in_group(
-        cResult1.batchId,
-        [](uint64_t a_itemId, uint64_t a_batchId, const std::string& a_value)
-        {
-            std::cout
-                << "itemId=" << a_itemId
-                << ", batchId=" << a_batchId
-                << ", value=" << a_value
-                << '\n';
-        });
-
+    const bool groupVisited =
+        world.for_each_object_in_scene(shapeScene1.sceneId, print_object);
     if (!groupVisited)
     {
         assert(false && "Failed to visit group.");
     }
 
     std::cout << "\n[All Items Access]\n";
-    container.for_each_item(
-        [](uint64_t a_itemId, uint64_t a_batchId, const std::string& a_value)
-        {
-            std::cout
-                << "itemId=" << a_itemId
-                << ", batchId=" << a_batchId
-                << ", value=" << a_value
-                << '\n';
-        });
+    world.for_each_object(print_object);
+
+    std::cout
+        << "\nobjectCount=" << world.object_count()
+        << ", sceneCount=" << world.scene_count()
+        << ", colorSceneId=" << colorScene.sceneId
+        << '\n';
 
     return 0;
 }

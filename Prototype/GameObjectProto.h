@@ -2,16 +2,40 @@
 
 #include "ECSManager.h"
 
+#include <string>
+#include <utility>
+
 namespace Cue::GameCore
 {
 	class GameObjectProto final : public ECS::Prototype
 	{
 	public:
-		GameObjectProto(const std::string& name, const std::string& tag) : m_name(name), m_tag(tag) {}
+		GameObjectProto() : m_name(""), m_tag("Default") {}
+		GameObjectProto(std::string name, std::string tag)
+			: m_name(std::move(name)), m_tag(std::move(tag)) {}
 		~GameObjectProto() = default;
 
 		const std::string& name() const { return m_name; }
 		const std::string& tag() const { return m_tag; }
+
+		template <ECS::ComponentType T>
+		void add_component(const T& a_comp)
+		{
+			register_component_type<T>();
+			Prototype::add_component<T>(a_comp);
+		}
+
+		template <ECS::ComponentType T>
+		void set_component(const T& a_comp)
+		{
+			register_component_type<T>();
+			Prototype::set_component<T>(a_comp);
+		}
+
+		void restore_components_into(ECS::Entity a_entity, ECS::ECSManager& a_ecs) const
+		{
+			instantiate_components(a_entity, a_ecs);
+		}
 
 		static GameObjectProto from_entity(ECS::ECSManager& a_ecs, ECS::Entity a_e, const std::string& a_name, const std::string& a_tag = "Default")
 		{
@@ -20,6 +44,13 @@ namespace Cue::GameCore
 			return proto;
 		}
 	private:
+		template <ECS::ComponentType T>
+		static void register_component_type()
+		{
+			Prototype::register_copy_func<T>();
+			Prototype::register_prefab_restore<T>();
+		}
+
 		ECS::Entity create_entity(ECS::ECSManager& a_ecs) const override
 		{
 			return Prototype::create_entity(a_ecs);
