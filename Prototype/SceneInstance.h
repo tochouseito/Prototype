@@ -17,6 +17,7 @@ namespace Cue::GameCore
         std::unordered_map<LocalObjectId, EntityId> localObjectToEntity{};
         bool isLoaded = false;
         bool isActive = true;
+        bool isPendingUnload = false;
         LocalObjectId nextLocalObjectId = 1;
     };
 }

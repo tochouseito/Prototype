@@ -16,3 +16,15 @@ namespace Cue::GameCore
         bool isPersistent = false;
     };
 }
+
+namespace Cue::ECS
+{
+    template <>
+    struct ComponentTypeName<Cue::GameCore::BaseComponent>
+    {
+        static constexpr const char* value() noexcept
+        {
+            return "Cue::GameCore::BaseComponent";
+        }
+    };
+}

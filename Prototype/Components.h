@@ -10,4 +10,13 @@ namespace Cue::ECS
 		float y = 0.0f;
 		float z = 0.0f;
 	};
+
+	template <>
+	struct ComponentTypeName<TransformComponent>
+	{
+		static constexpr const char* value() noexcept
+		{
+			return "Cue::ECS::TransformComponent";
+		}
+	};
 }

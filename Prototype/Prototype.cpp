@@ -133,6 +133,8 @@ int main()
         assert(false && "Failed to unload scene.");
     }
 
+    world.execute_deferred_deletions();
+
     std::cout << "[Single Item Access]\n";
     const bool itemVisited =
         world.visit_object(octagonObject.entity_id(), print_object);

@@ -21,7 +21,7 @@
 namespace Cue::ECS
 {
     using Entity = uint32_t;
-    using CompID = size_t;
+    using CompID = ComponentTypeID;
     using Archetype = std::bitset<256>;
 
     // コンポーネントだと判別するためのタグ
@@ -2917,7 +2917,7 @@ namespace Cue::ECS
             Prototype prefab;
             const Archetype& arch = a_ecs.get_archetype(a_e);
 
-            for (size_t id = 0; id < arch.size(); ++id)
+            for (CompID id = 0; id < static_cast<CompID>(arch.size()); ++id)
             {
                 if (!arch.test(id))
                 {
@@ -3141,7 +3141,7 @@ namespace Cue::ECS
         {
             const Archetype& arch = a_ecs.get_archetype(a_e);
 
-            for (size_t id = 0; id < arch.size(); ++id)
+            for (CompID id = 0; id < static_cast<CompID>(arch.size()); ++id)
             {
                 if (!arch.test(id))
                 {

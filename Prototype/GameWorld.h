@@ -32,6 +32,7 @@ namespace Cue::GameCore
         {
             Generation generation = 0;
             bool isAlive = false;
+            bool isPendingDestroy = false;
             SceneId sourceSceneId = k_invalidSceneId;
             LocalObjectId sourceLocalObjectId = k_invalidLocalObjectId;
         };
@@ -74,7 +75,7 @@ namespace Cue::GameCore
                     const std::vector<EntityId> created = it->second.entities;
                     for (const EntityId entity : created)
                     {
-                        destroy_object(entity);
+                        destroy_object_immediately(entity);
                     }
                     m_scenes.erase(it);
                 }
@@ -110,72 +111,43 @@ namespace Cue::GameCore
         void destroy_object(EntityId a_entityId) noexcept
         {
             EntityRecord* record = try_get_entity_record(a_entityId);
-            if (record == nullptr || !record->isAlive)
+            if (record == nullptr || !record->isAlive || record->isPendingDestroy)
             {
                 return;
             }
 
-            const bool unlinked = unlink_object_from_scene(a_entityId);
-            (void)unlinked;
-            remove_object_from_name_index(a_entityId, get_object_name(a_entityId));
-            remove_object_from_tag_index(a_entityId, get_object_tag(a_entityId));
-
-            record->isAlive = false;
-            record->sourceSceneId = k_invalidSceneId;
-            record->sourceLocalObjectId = k_invalidLocalObjectId;
-            ++record->generation;
-            if (record->generation == 0)
-            {
-                record->generation = 1;
-            }
-
-            if (m_liveObjectCount > 0)
-            {
-                --m_liveObjectCount;
-            }
-
-            m_ecs.remove_entity(a_entityId);
+            record->isPendingDestroy = true;
+            m_pendingDestroyedEntities.push_back(a_entityId);
         }
 
         [[nodiscard]] bool unload_scene(SceneId a_sceneId) noexcept
         {
             auto sceneIt = m_scenes.find(a_sceneId);
-            if (sceneIt == m_scenes.end())
+            if (sceneIt == m_scenes.end() || sceneIt->second.isPendingUnload)
             {
                 return false;
             }
 
-            const std::vector<EntityId> entities = sceneIt->second.entities;
-            for (const EntityId entity : entities)
+            sceneIt->second.isPendingUnload = true;
+            m_pendingUnloadedScenes.push_back(a_sceneId);
+            return true;
+        }
+
+        void execute_deferred_deletions() noexcept
+        {
+            std::vector<SceneId> pendingScenes{};
+            pendingScenes.swap(m_pendingUnloadedScenes);
+            for (const SceneId sceneId : pendingScenes)
             {
-                if (!contains_object(entity))
-                {
-                    continue;
-                }
-
-                BaseComponent* base = get_component<BaseComponent>(entity);
-                if (base != nullptr && base->isPersistent)
-                {
-                    if (base->parent != k_invalidEntityId &&
-                        source_scene_id(base->parent) == a_sceneId)
-                    {
-                        base->parent = k_invalidEntityId;
-                    }
-                    base->owningSceneId = k_invalidSceneId;
-
-                    if (EntityRecord* record = try_get_entity_record(entity))
-                    {
-                        record->sourceSceneId = k_invalidSceneId;
-                        record->sourceLocalObjectId = k_invalidLocalObjectId;
-                    }
-                    continue;
-                }
-
-                destroy_object(entity);
+                (void)unload_scene_immediately(sceneId);
             }
 
-            m_scenes.erase(sceneIt);
-            return true;
+            std::vector<EntityId> pendingEntities{};
+            pendingEntities.swap(m_pendingDestroyedEntities);
+            for (const EntityId entity : pendingEntities)
+            {
+                destroy_object_immediately(entity);
+            }
         }
 
         [[nodiscard]] GameObject find_object(EntityId a_entityId) noexcept
@@ -303,6 +275,8 @@ namespace Cue::GameCore
                     destroy_object(entity);
                 }
             }
+
+            execute_deferred_deletions();
         }
 
         template <typename T>
@@ -479,6 +453,30 @@ namespace Cue::GameCore
             return objects.front();
         }
 
+        [[nodiscard]] bool destroy_object_by_name(std::string_view a_name) noexcept
+        {
+            const GameObject object = find_object_by_name(a_name);
+            if (!object.is_valid())
+            {
+                return false;
+            }
+
+            destroy_object(object.entity_id());
+            return true;
+        }
+
+        [[nodiscard]] size_t destroy_objects_by_name(
+            std::string_view a_name) noexcept
+        {
+            const std::vector<GameObject> objects = find_objects_by_name(a_name);
+            for (const GameObject& object : objects)
+            {
+                destroy_object(object.entity_id());
+            }
+
+            return objects.size();
+        }
+
         [[nodiscard]] std::vector<GameObject> find_objects_by_name_series(
             std::string_view a_baseName)
         {
@@ -532,6 +530,31 @@ namespace Cue::GameCore
             return objects;
         }
 
+        [[nodiscard]] size_t destroy_objects_by_name_series(
+            std::string_view a_baseName) noexcept
+        {
+            const std::vector<GameObject> objects =
+                find_objects_by_name_series(a_baseName);
+            for (const GameObject& object : objects)
+            {
+                destroy_object(object.entity_id());
+            }
+
+            return objects.size();
+        }
+
+        [[nodiscard]] size_t destroy_objects_by_tag(
+            std::string_view a_tag) noexcept
+        {
+            const std::vector<GameObject> objects = find_objects_by_tag(a_tag);
+            for (const GameObject& object : objects)
+            {
+                destroy_object(object.entity_id());
+            }
+
+            return objects.size();
+        }
+
     private:
         [[nodiscard]] SceneId generate_scene_id()
         {
@@ -567,6 +590,7 @@ namespace Cue::GameCore
             }
 
             record.isAlive = true;
+            record.isPendingDestroy = false;
             record.sourceSceneId = a_sourceSceneId;
             record.sourceLocalObjectId = a_localObjectId;
             ++m_liveObjectCount;
@@ -632,6 +656,11 @@ namespace Cue::GameCore
             }
 
             SceneInstance& scene = sceneIt->second;
+            if (scene.isPendingUnload)
+            {
+                throw std::runtime_error("GameWorld scene is pending unload.");
+            }
+
             if (a_asset != nullptr)
             {
                 scene.asset = a_asset;
@@ -742,10 +771,85 @@ namespace Cue::GameCore
             {
                 for (const EntityId entity : createdEntities)
                 {
-                    destroy_object(entity);
+                    destroy_object_immediately(entity);
                 }
                 throw;
             }
+        }
+
+        void destroy_object_immediately(EntityId a_entityId) noexcept
+        {
+            EntityRecord* record = try_get_entity_record(a_entityId);
+            if (record == nullptr || !record->isAlive)
+            {
+                return;
+            }
+
+            record->isPendingDestroy = false;
+
+            const bool unlinked = unlink_object_from_scene(a_entityId);
+            (void)unlinked;
+            remove_object_from_name_index(a_entityId, get_object_name(a_entityId));
+            remove_object_from_tag_index(a_entityId, get_object_tag(a_entityId));
+
+            record->isAlive = false;
+            record->sourceSceneId = k_invalidSceneId;
+            record->sourceLocalObjectId = k_invalidLocalObjectId;
+            ++record->generation;
+            if (record->generation == 0)
+            {
+                record->generation = 1;
+            }
+
+            if (m_liveObjectCount > 0)
+            {
+                --m_liveObjectCount;
+            }
+
+            m_ecs.remove_entity(a_entityId);
+        }
+
+        [[nodiscard]] bool unload_scene_immediately(SceneId a_sceneId) noexcept
+        {
+            auto sceneIt = m_scenes.find(a_sceneId);
+            if (sceneIt == m_scenes.end())
+            {
+                return false;
+            }
+
+            sceneIt->second.isPendingUnload = false;
+
+            const std::vector<EntityId> entities = sceneIt->second.entities;
+            for (const EntityId entity : entities)
+            {
+                if (!contains_object(entity))
+                {
+                    continue;
+                }
+
+                BaseComponent* base = get_component<BaseComponent>(entity);
+                if (base != nullptr && base->isPersistent)
+                {
+                    if (base->parent != k_invalidEntityId &&
+                        source_scene_id(base->parent) == a_sceneId)
+                    {
+                        base->parent = k_invalidEntityId;
+                    }
+                    base->owningSceneId = k_invalidSceneId;
+
+                    if (EntityRecord* record = try_get_entity_record(entity))
+                    {
+                        record->sourceSceneId = k_invalidSceneId;
+                        record->sourceLocalObjectId = k_invalidLocalObjectId;
+                    }
+                    continue;
+                }
+
+                destroy_object_immediately(entity);
+            }
+
+            m_scenes.erase(sceneIt);
+            return true;
         }
 
         [[nodiscard]] bool unlink_object_from_scene(EntityId a_entityId) noexcept
@@ -959,6 +1063,8 @@ namespace Cue::GameCore
         std::unordered_map<std::string, std::unordered_set<EntityId>> m_nameIndex{};
         std::unordered_map<std::string, std::unordered_set<EntityId>> m_tagIndex{};
         std::vector<EntityRecord> m_entityRecords{};
+        std::vector<EntityId> m_pendingDestroyedEntities{};
+        std::vector<SceneId> m_pendingUnloadedScenes{};
         SceneId m_nextSceneId = 1;
         size_t m_liveObjectCount = 0;
     };
