@@ -13,7 +13,7 @@
 #include <windows.h>
 #include <assert.h>
 
-#include "BatchedNumberRegistry.h"
+#include "BatchedRegistry.h"
 
 int main()
 {
