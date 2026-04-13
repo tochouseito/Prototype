@@ -3,6 +3,7 @@
 // === C++ includes ===
 #include <algorithm>
 #include <bitset>
+#include <chrono>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -13,9 +14,6 @@
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
-
-// === Core includes ===
-#include <Time/IClock.h>
 
 // === ECS includes ===
 #include "ComponentIDHelper.h"
@@ -90,17 +88,15 @@ namespace Cue::ECS
     {
         friend class IPrefab;
 
+        using Clock = std::chrono::steady_clock;
+        using TimePoint = Clock::time_point;
+
     public:
         /*---------------------------------------------------------------------
                 エンティティ管理
             ---------------------------------------------------------------------*/
         ECSManager() = default;
-        explicit ECSManager(Core::Time::IClock& a_clock) noexcept
-            : m_clock(&a_clock)
-        {}
         ~ECSManager() = default;
-
-        void set_clock(Core::Time::IClock& a_clock) noexcept { m_clock = &a_clock; }
 
         // 公開API
         [[nodiscard]]
@@ -910,16 +906,16 @@ namespace Cue::ECS
         {
             m_isUpdating = true;
             m_cancelUpdate = false; // ← 毎フレーム最初にリセット
-            const Math::TimeSpan t0Total = capture_now();
+            const TimePoint t0Total = capture_now();
 
             sort_systems_by_priority();
             for (auto& sys : m_systems)
             {
                 if (sys->is_enabled())
                 {
-                    const Math::TimeSpan t0 = capture_now();
+                    const TimePoint t0 = capture_now();
                     sys->initialize(a_context);
-                    const Math::TimeSpan t1 = capture_now();
+                    const TimePoint t1 = capture_now();
                     std::type_index ti(typeid(*sys));
                     m_lastSystemInitializeTimeMs[ti] = elapsed_ms(t0, t1);
                 }
@@ -928,7 +924,7 @@ namespace Cue::ECS
             m_isUpdating = false;
             m_cancelUpdate = false;
 
-            const Math::TimeSpan t1Total = capture_now();
+            const TimePoint t1Total = capture_now();
             m_lastTotalInitializeTimeMs = elapsed_ms(t0Total, t1Total);
         }
 
@@ -942,7 +938,7 @@ namespace Cue::ECS
             m_isUpdating = true;
             m_cancelUpdate = false; // ← 毎フレーム最初にリセット
 
-            const Math::TimeSpan t0Total = capture_now();
+            const TimePoint t0Total = capture_now();
 
             // 追加直後の Entity を初期化システムに通す
             const InitializeContext initializeContext{};
@@ -965,9 +961,9 @@ namespace Cue::ECS
                     {
                         break; // 中止判定
                     }
-                    const Math::TimeSpan t0 = capture_now();
+                    const TimePoint t0 = capture_now();
                     sys->update(a_context);
-                    const Math::TimeSpan t1 = capture_now();
+                    const TimePoint t1 = capture_now();
                     std::type_index ti(typeid(*sys));
                     m_lastSystemUpdateTimeMs[ti] = elapsed_ms(t0, t1);
                 }
@@ -979,7 +975,7 @@ namespace Cue::ECS
             flush_staging_components();
             flush_deferred();
 
-            const Math::TimeSpan t1Total = capture_now();
+            const TimePoint t1Total = capture_now();
             m_lastTotalUpdateTimeMs = elapsed_ms(t0Total, t1Total);
         }
 
@@ -990,16 +986,16 @@ namespace Cue::ECS
         {
             m_isUpdating = true;
             m_cancelUpdate = false; // ← 毎フレーム最初にリセット
-            const Math::TimeSpan t0Total = capture_now();
+            const TimePoint t0Total = capture_now();
 
             sort_systems_by_priority();
             for (auto& sys : m_systems)
             {
                 if (sys->is_enabled())
                 {
-                    const Math::TimeSpan t0 = capture_now();
+                    const TimePoint t0 = capture_now();
                     sys->finalize(a_context);
-                    const Math::TimeSpan t1 = capture_now();
+                    const TimePoint t1 = capture_now();
 
                     std::type_index ti(typeid(*sys));
                     m_lastSystemFinalizeTimeMs[ti] = elapsed_ms(t0, t1);
@@ -1009,7 +1005,7 @@ namespace Cue::ECS
             m_isUpdating = false;
             m_cancelUpdate = false;
 
-            const Math::TimeSpan t1Total = capture_now();
+            const TimePoint t1Total = capture_now();
             m_lastTotalFinalizeTimeMs = elapsed_ms(t0Total, t1Total);
         }
 
@@ -1020,16 +1016,16 @@ namespace Cue::ECS
         {
             m_isUpdating = true;
             m_cancelUpdate = false; // ← 毎フレーム最初にリセット
-            const Math::TimeSpan t0Total = capture_now();
+            const TimePoint t0Total = capture_now();
 
             sort_systems_by_priority();
             for (auto& sys : m_systems)
             {
                 if (sys->is_enabled())
                 {
-                    const Math::TimeSpan t0 = capture_now();
+                    const TimePoint t0 = capture_now();
                     sys->awake(a_context);
-                    const Math::TimeSpan t1 = capture_now();
+                    const TimePoint t1 = capture_now();
                     std::type_index ti(typeid(*sys));
                     m_lastSystemAwakeTimeMs[ti] = elapsed_ms(t0, t1);
                 }
@@ -1038,7 +1034,7 @@ namespace Cue::ECS
             m_isUpdating = false;
             m_cancelUpdate = false;
 
-            const Math::TimeSpan t1Total = capture_now();
+            const TimePoint t1Total = capture_now();
             m_lastTotalAwakeTimeMs = elapsed_ms(t0Total, t1Total);
         }
 
@@ -2424,20 +2420,16 @@ namespace Cue::ECS
         }
 
     private:
-        [[nodiscard]] Math::TimeSpan capture_now() const noexcept
+        [[nodiscard]] TimePoint capture_now() const noexcept
         {
-            if (m_clock == nullptr)
-            {
-                return Math::TimeSpan::zero();
-            }
-
-            return m_clock->now_ns();
+            return Clock::now();
         }
 
-        [[nodiscard]] double elapsed_ms(Math::TimeSpan a_begin,
-            Math::TimeSpan a_end) const noexcept
+        [[nodiscard]] double elapsed_ms(TimePoint a_begin,
+            TimePoint a_end) const noexcept
         {
-            return (a_end - a_begin).ms_f64();
+            return std::chrono::duration<double, std::milli>(a_end - a_begin)
+                .count();
         }
 
         void sort_systems_by_priority()
@@ -2541,7 +2533,6 @@ namespace Cue::ECS
 
         /*-------------------- data members --------------------------------*/
 
-        Core::Time::IClock* m_clock = nullptr;
         bool m_isUpdating = false;
         bool m_cancelUpdate = false;
         Entity m_nextEntityId = static_cast<Entity>(-1);
