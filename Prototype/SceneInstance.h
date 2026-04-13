@@ -17,6 +17,7 @@ namespace Cue::GameCore
         std::unordered_map<LocalObjectId, EntityId> localObjectToEntity{};
         bool isLoaded = false;
         bool isActive = true;
+        // 遅延アンロード待ちの Scene を二重にキュー登録しないためのフラグ。
         bool isPendingUnload = false;
         LocalObjectId nextLocalObjectId = 1;
     };

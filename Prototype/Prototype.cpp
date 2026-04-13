@@ -1,5 +1,4 @@
-// Prototype.cpp : このファイルには 'main' 関数が含まれています。プログラム実行の開始と終了がそこで行われます。
-//
+// GameWorld の主要 API をまとめて確認するためのサンプル。
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -63,6 +62,7 @@ int main()
     };
 
     SceneAsset colors("Colors");
+    // SceneAsset 側に初期配置用の ObjectDefinition を定義しておく。
     auto& red = colors.add_object("red", "Color");
     red.prototype.add_component<TransformComponent>(make_transform(1.0f, 0.0f, 0.0f));
     auto& green = colors.add_object("green", "Color");
@@ -79,6 +79,7 @@ int main()
     triangle.prototype.add_component<TransformComponent>(make_transform(30.0f, 0.0f, 0.0f));
 
     std::vector<ObjectDefinition> shapeExtras{};
+    // 既存 Scene への追加投入用オブジェクト。
     shapeExtras.emplace_back("hexagon", "Shape");
     shapeExtras.back().prototype.add_component<TransformComponent>(
         make_transform(40.0f, 0.0f, 0.0f));
@@ -91,6 +92,7 @@ int main()
         make_transform(60.0f, 0.0f, 0.0f));
 
     GameWorld world;
+    // 同名でも自動で連番が付与される。
     const GameObject enemy0 = world.create_object("Enemy", "Actor");
     const GameObject enemy1 = world.create_object("Enemy", "Actor");
     const GameObject enemy2 = world.create_object("Enemy", "Actor");
@@ -125,17 +127,43 @@ int main()
         assert(false && "Failed to append object to scene.");
     }
 
+    std::cout << "\n[遅延削除キュー]\n";
+    // Object 削除と Scene アンロードは、この時点では予約されるだけ。
     world.destroy_object(shapeScene1.objects[1].entity_id());
-
     const bool sceneUnloaded = world.unload_scene(shapeScene2.sceneId);
     if (!sceneUnloaded)
     {
         assert(false && "Failed to unload scene.");
     }
 
+    const bool squareAliveBeforeFlush =
+        world.contains_object(shapeScene1.objects[1].entity_id());
+    const bool sceneAliveBeforeFlush = world.contains_scene(shapeScene2.sceneId);
+
+    std::cout
+        << "flush 前: squareAlive=" << squareAliveBeforeFlush
+        << ", sceneLoaded=" << sceneAliveBeforeFlush
+        << '\n';
+
+    // ここで遅延削除キューを実行し、実際に破棄する。
     world.execute_deferred_deletions();
 
-    std::cout << "[Single Item Access]\n";
+    const bool squareAliveAfterFlush =
+        world.contains_object(shapeScene1.objects[1].entity_id());
+    const bool sceneAliveAfterFlush = world.contains_scene(shapeScene2.sceneId);
+
+    std::cout
+        << "flush 後: squareAlive=" << squareAliveAfterFlush
+        << ", sceneLoaded=" << sceneAliveAfterFlush
+        << '\n';
+
+    if (!squareAliveBeforeFlush || !sceneAliveBeforeFlush ||
+        squareAliveAfterFlush || sceneAliveAfterFlush)
+    {
+        assert(false && "Deferred deletion queue behaved unexpectedly.");
+    }
+
+    std::cout << "[単体アクセス]\n";
     const bool itemVisited =
         world.visit_object(octagonObject.entity_id(), print_object);
     if (!itemVisited)
@@ -143,7 +171,7 @@ int main()
         assert(false && "Failed to visit item.");
     }
 
-    std::cout << "\n[Group Access]\n";
+    std::cout << "\n[Scene 単位アクセス]\n";
     const bool groupVisited =
         world.for_each_object_in_scene(shapeScene1.sceneId, print_object);
     if (!groupVisited)
@@ -151,7 +179,7 @@ int main()
         assert(false && "Failed to visit group.");
     }
 
-    std::cout << "\n[Tag Access]\n";
+    std::cout << "\n[タグ検索]\n";
     const std::vector<GameObject> shapeObjects = world.find_objects_by_tag("Shape");
     for (const GameObject& object : shapeObjects)
     {
@@ -164,7 +192,7 @@ int main()
         assert(false && "Unexpected tag search result.");
     }
 
-    std::cout << "\n[Name Access]\n";
+    std::cout << "\n[名前検索]\n";
     const GameObject triangleObject = world.find_object_by_name("triangle");
     if (!triangleObject.is_valid())
     {
@@ -173,7 +201,7 @@ int main()
     print_object(triangleObject.entity_id(),
         world.source_scene_id(triangleObject.entity_id()), triangleObject);
 
-    std::cout << "\n[Name Series Access]\n";
+    std::cout << "\n[連番名検索]\n";
     const std::vector<GameObject> enemyObjects =
         world.find_objects_by_name_series("Enemy");
     for (const GameObject& object : enemyObjects)
@@ -187,7 +215,7 @@ int main()
         assert(false && "Failed to find object name series.");
     }
 
-    std::cout << "\n[All Items Access]\n";
+    std::cout << "\n[全件アクセス]\n";
     world.for_each_object(print_object);
 
     std::cout

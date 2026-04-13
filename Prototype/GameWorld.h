@@ -32,6 +32,7 @@ namespace Cue::GameCore
         {
             Generation generation = 0;
             bool isAlive = false;
+            // 遅延削除キューへ同じ Entity を二重登録しないためのフラグ。
             bool isPendingDestroy = false;
             SceneId sourceSceneId = k_invalidSceneId;
             LocalObjectId sourceLocalObjectId = k_invalidLocalObjectId;
@@ -44,6 +45,7 @@ namespace Cue::GameCore
         [[nodiscard]] GameObject create_object(std::string_view a_name,
             std::string_view a_tag = "Default", bool a_isPersistent = false)
         {
+            // Scene に属さない単体の GameObject を生成する。
             const EntityId entity =
                 create_entity_record(k_invalidSceneId, k_invalidLocalObjectId);
             initialize_base_component(entity, a_name, a_tag, k_invalidSceneId,
@@ -116,6 +118,7 @@ namespace Cue::GameCore
                 return;
             }
 
+            // 実際の削除は execute_deferred_deletions() が呼ばれるまで遅延させる。
             record->isPendingDestroy = true;
             m_pendingDestroyedEntities.push_back(a_entityId);
         }
@@ -128,6 +131,7 @@ namespace Cue::GameCore
                 return false;
             }
 
+            // Scene の破棄も遅延させ、呼び出し側が flush のタイミングを制御できるようにする。
             sceneIt->second.isPendingUnload = true;
             m_pendingUnloadedScenes.push_back(a_sceneId);
             return true;
@@ -135,6 +139,7 @@ namespace Cue::GameCore
 
         void execute_deferred_deletions() noexcept
         {
+            // Scene のアンロードでは非永続 Object がまとめて消えるため、先に Scene 側を処理する。
             std::vector<SceneId> pendingScenes{};
             pendingScenes.swap(m_pendingUnloadedScenes);
             for (const SceneId sceneId : pendingScenes)
@@ -142,6 +147,7 @@ namespace Cue::GameCore
                 (void)unload_scene_immediately(sceneId);
             }
 
+            // 続いて、単体で予約されていた Object の削除を処理する。
             std::vector<EntityId> pendingEntities{};
             pendingEntities.swap(m_pendingDestroyedEntities);
             for (const EntityId entity : pendingEntities)
@@ -255,6 +261,7 @@ namespace Cue::GameCore
 
         void clear() noexcept
         {
+            // 公開 API を使って削除予約を積み、最後にまとめて flush する。
             std::vector<SceneId> sceneIds{};
             sceneIds.reserve(m_scenes.size());
             for (const auto& [sceneId, _] : m_scenes)
@@ -276,6 +283,7 @@ namespace Cue::GameCore
                 }
             }
 
+            // clear() 完了時点ではワールドが空になっていることを保証する。
             execute_deferred_deletions();
         }
 
@@ -571,6 +579,7 @@ namespace Cue::GameCore
         [[nodiscard]] EntityId create_entity_record(SceneId a_sourceSceneId,
             LocalObjectId a_localObjectId)
         {
+            // ECS の Entity と GameWorld の管理情報を対応付ける。
             const EntityId entity = m_ecs.generate_entity();
 
             if (m_entityRecords.size() <= entity)
@@ -649,6 +658,7 @@ namespace Cue::GameCore
             std::span<const ObjectDefinition> a_objects,
             const SceneAsset* a_asset)
         {
+            // ObjectDefinition 群を実 Entity として生成し、Scene に紐付ける。
             auto sceneIt = m_scenes.find(a_sceneId);
             if (sceneIt == m_scenes.end())
             {
@@ -785,6 +795,7 @@ namespace Cue::GameCore
                 return;
             }
 
+            // flush 実行時と、例外時に即座に巻き戻す必要がある経路で使う。
             record->isPendingDestroy = false;
 
             const bool unlinked = unlink_object_from_scene(a_entityId);
@@ -817,6 +828,7 @@ namespace Cue::GameCore
                 return false;
             }
 
+            // 遅延状態を解除し、ここで実際の Scene アンロードを行う。
             sceneIt->second.isPendingUnload = false;
 
             const std::vector<EntityId> entities = sceneIt->second.entities;
@@ -1063,6 +1075,7 @@ namespace Cue::GameCore
         std::unordered_map<std::string, std::unordered_set<EntityId>> m_nameIndex{};
         std::unordered_map<std::string, std::unordered_set<EntityId>> m_tagIndex{};
         std::vector<EntityRecord> m_entityRecords{};
+        // 公開 API の遅延削除要求を一時的に保持するキュー。
         std::vector<EntityId> m_pendingDestroyedEntities{};
         std::vector<SceneId> m_pendingUnloadedScenes{};
         SceneId m_nextSceneId = 1;

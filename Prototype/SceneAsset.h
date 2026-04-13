@@ -12,12 +12,18 @@
 
 namespace Cue::GameCore
 {
+    // SceneAsset 内の 1 件分のオブジェクト定義。
     struct ObjectDefinition final
     {
+        // SceneAsset 内で親子参照に使うローカル ID。
         LocalObjectId localObjectId = k_invalidLocalObjectId;
+        // 親オブジェクトのローカル ID。未指定ならルート扱い。
         std::optional<LocalObjectId> parentLocalObjectId{};
+        // Scene 読み込み時の初期アクティブ状態。
         bool isActive = true;
+        // true の場合、Scene アンロード後も Object を残す。
         bool isPersistent = false;
+        // 実体化時に復元するコンポーネント群。
         GameObjectProto prototype{};
 
         ObjectDefinition() = default;
@@ -36,6 +42,7 @@ namespace Cue::GameCore
         [[nodiscard]] const std::string& tag() const noexcept { return prototype.tag(); }
     };
 
+    // Scene をロードする前段階の定義データ。
     class SceneAsset final
     {
     public:
@@ -47,6 +54,7 @@ namespace Cue::GameCore
         ObjectDefinition& add_object(std::string a_name,
             std::string a_tag = "Default")
         {
+            // LocalObjectId は SceneAsset 側で自動採番する。
             ObjectDefinition object(generate_local_object_id(), std::move(a_name),
                 std::move(a_tag));
             return add_object(std::move(object));
@@ -54,6 +62,7 @@ namespace Cue::GameCore
 
         ObjectDefinition& add_object(ObjectDefinition a_object)
         {
+            // 明示 ID が無い場合は自動採番、ある場合は重複を禁止する。
             if (a_object.localObjectId == k_invalidLocalObjectId)
             {
                 a_object.localObjectId = generate_local_object_id();
@@ -76,6 +85,7 @@ namespace Cue::GameCore
 
         void add_game_object_proto(const std::string& a_name)
         {
+            // 旧 API 互換のための簡易追加関数。
             (void)add_object(a_name);
         }
 
@@ -120,7 +130,9 @@ namespace Cue::GameCore
         }
 
         std::string m_name{};
+        // SceneAsset に定義された Object 一覧。
         std::vector<ObjectDefinition> m_objects{};
+        // localObjectId から配列インデックスへ引くための索引。
         std::unordered_map<LocalObjectId, size_t> m_objectIndexByLocalId{};
         LocalObjectId m_nextLocalObjectId = 1;
     };
