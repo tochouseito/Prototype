@@ -241,6 +241,49 @@ public:
     }
 
     template <class F>
+    [[nodiscard]] bool visit_item(item_id_type a_itemId, F&& a_func) const
+    {
+        // 1) itemId からインデックス取得
+        auto itemIt = m_itemToIndex.find(a_itemId);
+        if (itemIt == m_itemToIndex.end())
+        {
+            return false;
+        }
+
+        // 2) 対象 item を 1 件だけ渡す
+        const StoredItem& item = m_items[itemIt->second];
+        a_func(item.itemId, item.batchId, item.value);
+        return true;
+    }
+
+    template <class F>
+    [[nodiscard]] bool for_each_item_in_group(batch_id_type a_batchId, F&& a_func) const
+    {
+        // 1) batch の存在確認
+        auto batchIt = m_batches.find(a_batchId);
+        if (batchIt == m_batches.end())
+        {
+            return false;
+        }
+
+        // 2) batch に属する item を列挙
+        const BatchInfo& batchInfo = batchIt->second;
+        for (const item_id_type itemId : batchInfo.itemIds)
+        {
+            auto itemIt = m_itemToIndex.find(itemId);
+            if (itemIt == m_itemToIndex.end())
+            {
+                throw std::runtime_error("NumberContainer internal error: group item not found.");
+            }
+
+            const StoredItem& item = m_items[itemIt->second];
+            a_func(item.itemId, item.batchId, item.value);
+        }
+
+        return true;
+    }
+
+    template <class F>
     void for_each_item(F&& a_func) const
     {
         // 1) 全要素を列挙

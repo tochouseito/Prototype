@@ -55,11 +55,46 @@ int main()
     // 2回目の c をグループごと削除
     bool groupErased = container.erase_group(cResult2.batchId);
 
-	if (!groupErased)
+    if (!groupErased)
     {
 		assert(false && "Failed to erase group.");
     }
 
+    std::cout << "[Single Item Access]\n";
+    const bool itemVisited = container.visit_item(
+        cSingleAppendItemId,
+        [](uint64_t a_itemId, uint64_t a_batchId, const std::string& a_value)
+        {
+            std::cout
+                << "itemId=" << a_itemId
+                << ", batchId=" << a_batchId
+                << ", value=" << a_value
+                << '\n';
+        });
+
+    if (!itemVisited)
+    {
+        assert(false && "Failed to visit item.");
+    }
+
+    std::cout << "\n[Group Access]\n";
+    const bool groupVisited = container.for_each_item_in_group(
+        cResult1.batchId,
+        [](uint64_t a_itemId, uint64_t a_batchId, const std::string& a_value)
+        {
+            std::cout
+                << "itemId=" << a_itemId
+                << ", batchId=" << a_batchId
+                << ", value=" << a_value
+                << '\n';
+        });
+
+    if (!groupVisited)
+    {
+        assert(false && "Failed to visit group.");
+    }
+
+    std::cout << "\n[All Items Access]\n";
     container.for_each_item(
         [](uint64_t a_itemId, uint64_t a_batchId, const std::string& a_value)
         {
