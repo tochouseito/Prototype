@@ -217,6 +217,39 @@ namespace Cue::GameCore
                 });
         }
 
+        [[nodiscard]] Result is_object_active(
+            EntityId a_entityId, bool& a_outIsActive) const noexcept
+        {
+            a_outIsActive = contains_object(a_entityId) &&
+                m_ecs.is_entity_active(a_entityId);
+            return contains_object(a_entityId)
+                ? Result::ok()
+                : Result::fail(
+                    Code::NotFound, Severity::Warning, "GameWorld object was not found.");
+        }
+
+        [[nodiscard]] Result set_object_active(
+            EntityId a_entityId, bool a_isActive)
+        {
+            return capture_result([this, a_entityId, a_isActive]()
+                {
+                    BaseComponent* base = get_component<BaseComponent>(a_entityId);
+                    if (base == nullptr)
+                    {
+                        throw std::runtime_error("GameWorld BaseComponent is missing.");
+                    }
+
+                    if (base->isActiveSelf == a_isActive &&
+                        m_ecs.is_entity_active(a_entityId) == a_isActive)
+                    {
+                        return;
+                    }
+
+                    base->isActiveSelf = a_isActive;
+                    m_ecs.set_entity_active(a_entityId, a_isActive);
+                });
+        }
+
         [[nodiscard]] Result is_object_persistent(
             EntityId a_entityId, bool& a_outIsPersistent) const noexcept
         {
@@ -1508,6 +1541,29 @@ namespace Cue::GameCore
         }
 
         return m_world->set_object_tag(m_entityId, a_tag);
+    }
+
+    inline Result GameObject::is_active(bool& a_outIsActive) const
+    {
+        if (!is_valid())
+        {
+            a_outIsActive = false;
+            return Result::fail(
+                Code::InvalidState, Severity::Warning, "GameObject is not valid.");
+        }
+
+        return m_world->is_object_active(m_entityId, a_outIsActive);
+    }
+
+    inline Result GameObject::set_active(bool a_isActive)
+    {
+        if (!is_valid())
+        {
+            return Result::fail(
+                Code::InvalidState, Severity::Warning, "GameObject is not valid.");
+        }
+
+        return m_world->set_object_active(m_entityId, a_isActive);
     }
 
     inline Result GameObject::is_persistent(bool& a_outIsPersistent) const

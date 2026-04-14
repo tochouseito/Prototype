@@ -135,6 +135,13 @@ int main()
         return isPersistent;
     };
 
+    auto object_active = [&expect_ok](const GameObject& a_object, const char* a_context)
+    {
+        bool isActive = false;
+        expect_ok(a_object.is_active(isActive), a_context);
+        return isActive;
+    };
+
     auto contains_object = [&world, &expect_ok](uint32_t a_entityId)
     {
         bool contains = false;
@@ -166,6 +173,17 @@ int main()
     if (object_name(unnamedObject, "unnamedObject.name") != "GameObject")
     {
         assert(false && "Unexpected default object name.");
+    }
+
+    expect_ok(enemy0.set_active(false), "enemy0.set_active(false)");
+    if (object_active(enemy0, "enemy0.is_active false"))
+    {
+        assert(false && "enemy0 should be inactive.");
+    }
+    expect_ok(enemy0.set_active(true), "enemy0.set_active(true)");
+    if (!object_active(enemy0, "enemy0.is_active true"))
+    {
+        assert(false && "enemy0 should be active.");
     }
 
     GameWorld::LoadSceneResult colorScene{};

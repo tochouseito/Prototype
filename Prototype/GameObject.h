@@ -29,6 +29,8 @@ namespace Cue::GameCore
         [[nodiscard]] Result set_name(std::string_view a_name);
         [[nodiscard]] Result tag(std::string& a_outTag) const;
         [[nodiscard]] Result set_tag(std::string_view a_tag);
+        [[nodiscard]] Result is_active(bool& a_outIsActive) const;
+        [[nodiscard]] Result set_active(bool a_isActive);
         [[nodiscard]] Result is_persistent(bool& a_outIsPersistent) const;
         [[nodiscard]] Result set_persistent(bool a_isPersistent);
 
