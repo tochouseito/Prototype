@@ -59,6 +59,9 @@
     <ClInclude Include="GameObjectProto.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="Result.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="cue_engine_gameworld_design.md" />

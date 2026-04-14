@@ -146,6 +146,7 @@
     <ClInclude Include="ComponentIDHelper.h" />
     <ClInclude Include="ECSManager.h" />
     <ClInclude Include="GameWorld.h" />
+    <ClInclude Include="Result.h" />
     <ClInclude Include="SceneAsset.h" />
     <ClInclude Include="SceneInstance.h" />
     <ClInclude Include="GameObject.h" />

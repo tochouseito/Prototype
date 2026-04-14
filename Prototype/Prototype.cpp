@@ -20,6 +20,8 @@ int main()
 {
     SetConsoleOutputCP(CP_UTF8);
 
+    using Cue::Result;
+    using Cue::to_string;
     using Cue::ECS::TransformComponent;
     using Cue::GameCore::BaseComponent;
     using Cue::GameCore::GameObject;
@@ -36,12 +38,28 @@ int main()
         return transform;
     };
 
+    auto expect_ok = [](const Result& a_result, const char* a_context)
+    {
+        if (a_result)
+        {
+            return;
+        }
+
+        std::cerr
+            << a_context
+            << " failed: code=" << to_string(a_result.code)
+            << ", message=" << a_result.message
+            << '\n';
+        assert(false && "Unexpected Result failure.");
+    };
+
     auto print_object = [](uint32_t a_entityId, uint64_t a_sceneId,
                             GameObject a_object)
     {
-        const BaseComponent* base = a_object.get_component<BaseComponent>();
-        const TransformComponent* transform =
-            a_object.get_component<TransformComponent>();
+        BaseComponent* base = nullptr;
+        (void)a_object.get_component<BaseComponent>(base);
+        TransformComponent* transform = nullptr;
+        (void)a_object.get_component<TransformComponent>(transform);
 
         std::cout
             << "entityId=" << a_entityId
@@ -93,31 +111,77 @@ int main()
 
     GameWorld world;
     // 同名でも自動で連番が付与される。
-    const GameObject enemy0 = world.create_object("Enemy", "Actor");
-    const GameObject enemy1 = world.create_object("Enemy", "Actor");
-    const GameObject enemy2 = world.create_object("Enemy", "Actor");
-    const GameObject unnamedObject = world.create_object("", "Actor");
+    GameObject enemy0{};
+    expect_ok(world.create_object("Enemy", "Actor", false, enemy0), "create enemy0");
+    GameObject enemy1{};
+    expect_ok(world.create_object("Enemy", "Actor", false, enemy1), "create enemy1");
+    GameObject enemy2{};
+    expect_ok(world.create_object("Enemy", "Actor", false, enemy2), "create enemy2");
+    GameObject unnamedObject{};
+    expect_ok(world.create_object("", "Actor", false, unnamedObject),
+        "create unnamed object");
 
-    if (enemy0.name() != "Enemy" || enemy1.name() != "Enemy(1)" ||
-        enemy2.name() != "Enemy(2)")
+    auto object_name = [&expect_ok](const GameObject& a_object, const char* a_context)
+    {
+        std::string name{};
+        expect_ok(a_object.name(name), a_context);
+        return name;
+    };
+
+    auto object_persistent = [&expect_ok](const GameObject& a_object, const char* a_context)
+    {
+        bool isPersistent = false;
+        expect_ok(a_object.is_persistent(isPersistent), a_context);
+        return isPersistent;
+    };
+
+    auto contains_object = [&world, &expect_ok](uint32_t a_entityId)
+    {
+        bool contains = false;
+        expect_ok(world.contains_object(a_entityId, contains), "contains_object");
+        return contains;
+    };
+
+    auto contains_scene = [&world, &expect_ok](uint64_t a_sceneId)
+    {
+        bool contains = false;
+        expect_ok(world.contains_scene(a_sceneId, contains), "contains_scene");
+        return contains;
+    };
+
+    auto source_scene_id = [&world, &expect_ok](uint32_t a_entityId)
+    {
+        uint64_t sceneId = Cue::GameCore::k_invalidSceneId;
+        expect_ok(world.source_scene_id(a_entityId, sceneId), "source_scene_id");
+        return sceneId;
+    };
+
+    if (object_name(enemy0, "enemy0.name") != "Enemy" ||
+        object_name(enemy1, "enemy1.name") != "Enemy(1)" ||
+        object_name(enemy2, "enemy2.name") != "Enemy(2)")
     {
         assert(false && "Unexpected unique name assignment.");
     }
 
-    if (unnamedObject.name() != "GameObject")
+    if (object_name(unnamedObject, "unnamedObject.name") != "GameObject")
     {
         assert(false && "Unexpected default object name.");
     }
 
-    const auto colorScene = world.load_scene(colors);
-    const auto shapeScene1 = world.load_scene(shapes);
-    const auto shapeScene2 = world.load_scene(shapes);
-    const auto shapeAppendResult =
-        world.append_to_scene(shapeScene1.sceneId, shapeExtras);
-    const auto octagonObject =
-        world.append_object_to_scene(shapeScene1.sceneId, octagon);
+    GameWorld::LoadSceneResult colorScene{};
+    expect_ok(world.load_scene(colors, colorScene), "load colors");
+    GameWorld::LoadSceneResult shapeScene1{};
+    expect_ok(world.load_scene(shapes, shapeScene1), "load shapes 1");
+    GameWorld::LoadSceneResult shapeScene2{};
+    expect_ok(world.load_scene(shapes, shapeScene2), "load shapes 2");
+    GameWorld::LoadSceneResult shapeAppendResult{};
+    expect_ok(world.append_to_scene(shapeScene1.sceneId, shapeExtras, shapeAppendResult),
+        "append shapes");
+    GameObject octagonObject{};
+    expect_ok(world.append_object_to_scene(shapeScene1.sceneId, octagon, octagonObject),
+        "append octagon");
 
-    if (!world.contains_scene(shapeAppendResult.sceneId))
+    if (!contains_scene(shapeAppendResult.sceneId))
     {
         assert(false && "Failed to append objects to scene.");
     }
@@ -129,16 +193,14 @@ int main()
 
     std::cout << "\n[遅延削除キュー]\n";
     // Object 削除と Scene アンロードは、この時点では予約されるだけ。
-    world.destroy_object(shapeScene1.objects[1].entity_id());
-    const bool sceneUnloaded = world.unload_scene(shapeScene2.sceneId);
-    if (!sceneUnloaded)
-    {
-        assert(false && "Failed to unload scene.");
-    }
+    expect_ok(world.destroy_object(shapeScene1.objects[1].entity_id()), "destroy square");
+    GameObject persistentShape = shapeScene2.objects[0];
+    expect_ok(persistentShape.set_persistent(true), "persistentShape.set_persistent");
+    expect_ok(world.unload_scene(shapeScene2.sceneId), "unload shapeScene2");
 
     const bool squareAliveBeforeFlush =
-        world.contains_object(shapeScene1.objects[1].entity_id());
-    const bool sceneAliveBeforeFlush = world.contains_scene(shapeScene2.sceneId);
+        contains_object(shapeScene1.objects[1].entity_id());
+    const bool sceneAliveBeforeFlush = contains_scene(shapeScene2.sceneId);
 
     std::cout
         << "flush 前: squareAlive=" << squareAliveBeforeFlush
@@ -146,45 +208,50 @@ int main()
         << '\n';
 
     // ここで遅延削除キューを実行し、実際に破棄する。
-    world.execute_deferred_deletions();
+    expect_ok(world.execute_deferred_deletions(), "execute_deferred_deletions");
 
     const bool squareAliveAfterFlush =
-        world.contains_object(shapeScene1.objects[1].entity_id());
-    const bool sceneAliveAfterFlush = world.contains_scene(shapeScene2.sceneId);
+        contains_object(shapeScene1.objects[1].entity_id());
+    const bool sceneAliveAfterFlush = contains_scene(shapeScene2.sceneId);
+    const bool persistentAliveAfterFlush =
+        contains_object(persistentShape.entity_id());
+    const bool persistentFlagAfterFlush =
+        object_persistent(persistentShape, "persistentShape.is_persistent");
+    const bool persistentSourceCleared =
+        source_scene_id(persistentShape.entity_id()) ==
+        Cue::GameCore::k_invalidSceneId;
 
     std::cout
         << "flush 後: squareAlive=" << squareAliveAfterFlush
         << ", sceneLoaded=" << sceneAliveAfterFlush
+        << ", persistentAlive=" << persistentAliveAfterFlush
+        << ", persistentFlag=" << persistentFlagAfterFlush
         << '\n';
 
     if (!squareAliveBeforeFlush || !sceneAliveBeforeFlush ||
-        squareAliveAfterFlush || sceneAliveAfterFlush)
+        squareAliveAfterFlush || sceneAliveAfterFlush ||
+        !persistentAliveAfterFlush || !persistentFlagAfterFlush ||
+        !persistentSourceCleared)
     {
         assert(false && "Deferred deletion queue behaved unexpectedly.");
     }
 
+    expect_ok(persistentShape.destroy(), "persistentShape.destroy");
+    expect_ok(world.execute_deferred_deletions(), "execute_deferred_deletions after destroy");
+
     std::cout << "[単体アクセス]\n";
-    const bool itemVisited =
-        world.visit_object(octagonObject.entity_id(), print_object);
-    if (!itemVisited)
-    {
-        assert(false && "Failed to visit item.");
-    }
+    expect_ok(world.visit_object(octagonObject.entity_id(), print_object), "visit octagon");
 
     std::cout << "\n[Scene 単位アクセス]\n";
-    const bool groupVisited =
-        world.for_each_object_in_scene(shapeScene1.sceneId, print_object);
-    if (!groupVisited)
-    {
-        assert(false && "Failed to visit group.");
-    }
+    expect_ok(world.for_each_object_in_scene(shapeScene1.sceneId, print_object),
+        "for_each_object_in_scene");
 
     std::cout << "\n[タグ検索]\n";
-    const std::vector<GameObject> shapeObjects = world.find_objects_by_tag("Shape");
+    std::vector<GameObject> shapeObjects{};
+    expect_ok(world.find_objects_by_tag("Shape", shapeObjects), "find_objects_by_tag");
     for (const GameObject& object : shapeObjects)
     {
-        print_object(object.entity_id(), world.source_scene_id(object.entity_id()),
-            object);
+        print_object(object.entity_id(), source_scene_id(object.entity_id()), object);
     }
 
     if (shapeObjects.size() != 5)
@@ -193,21 +260,22 @@ int main()
     }
 
     std::cout << "\n[名前検索]\n";
-    const GameObject triangleObject = world.find_object_by_name("triangle");
+    GameObject triangleObject{};
+    expect_ok(world.find_object_by_name("triangle", triangleObject), "find_object_by_name");
     if (!triangleObject.is_valid())
     {
         assert(false && "Failed to find object by name.");
     }
-    print_object(triangleObject.entity_id(),
-        world.source_scene_id(triangleObject.entity_id()), triangleObject);
+    print_object(
+        triangleObject.entity_id(), source_scene_id(triangleObject.entity_id()), triangleObject);
 
     std::cout << "\n[連番名検索]\n";
-    const std::vector<GameObject> enemyObjects =
-        world.find_objects_by_name_series("Enemy");
+    std::vector<GameObject> enemyObjects{};
+    expect_ok(world.find_objects_by_name_series("Enemy", enemyObjects),
+        "find_objects_by_name_series");
     for (const GameObject& object : enemyObjects)
     {
-        print_object(object.entity_id(), world.source_scene_id(object.entity_id()),
-            object);
+        print_object(object.entity_id(), source_scene_id(object.entity_id()), object);
     }
 
     if (enemyObjects.size() != 3)
@@ -216,11 +284,16 @@ int main()
     }
 
     std::cout << "\n[全件アクセス]\n";
-    world.for_each_object(print_object);
+    expect_ok(world.for_each_object(print_object), "for_each_object");
+
+    size_t objectCount = 0;
+    expect_ok(world.object_count(objectCount), "object_count");
+    size_t sceneCount = 0;
+    expect_ok(world.scene_count(sceneCount), "scene_count");
 
     std::cout
-        << "\nobjectCount=" << world.object_count()
-        << ", sceneCount=" << world.scene_count()
+        << "\nobjectCount=" << objectCount
+        << ", sceneCount=" << sceneCount
         << ", colorSceneId=" << colorScene.sceneId
         << '\n';
 
