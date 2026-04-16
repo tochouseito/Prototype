@@ -10,10 +10,35 @@
 #include <iostream>
 #include <windows.h>
 
+struct Test
+{
+    int* ptr = nullptr;
+    constexpr Test() = default;
+    constexpr Test(int a) : ptr(new int(a)) {}
+    constexpr ~Test() { delete ptr; }
+    constexpr Test Copy()
+    {
+        Test copy;
+        copy.ptr = new int(*ptr);
+        return copy; // ←コピー省略は行われるべきで
+    }
+};
+
+consteval bool testTest()
+{
+    Test test(1);
+    Test copy = test.Copy();
+    return true;
+}
+
 int main()
 {
     SetConsoleOutputCP(CP_UTF8);
     std::cout << "こんにちは！\n";
+
+    Test test(1);
+    Test copy = test.Copy();
+    return true;
 }
 
 // プログラムの実行: Ctrl + F5 または [デバッグ] > [デバッグなしで開始] メニュー
