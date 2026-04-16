@@ -36,9 +36,7 @@ int main()
     SetConsoleOutputCP(CP_UTF8);
     std::cout << "こんにちは！\n";
 
-    Test test(1);
-    Test copy = test.Copy();
-    return true;
+    testTest();
 }
 
 // プログラムの実行: Ctrl + F5 または [デバッグ] > [デバッグなしで開始] メニュー
