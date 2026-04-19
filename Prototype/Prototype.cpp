@@ -10,6 +10,40 @@
 #include <iostream>
 #include <windows.h>
 
+struct Vector3
+{
+	float x, y, z;
+};
+
+struct Transform
+
+template<typename T>
+struct StructuredBuffer
+{
+	T* data;
+	size_t count;
+};
+
+void generate_command_arguments()
+{
+
+}
+
+void compute_positions(StructuredBuffer<Vector3>&)
+{
+	
+}
+
+void compute_rotations(StructuredBuffer<Vector3>&)
+{
+
+}
+
+void compute_scales(StructuredBuffer<Vector3>&)
+{}
+
+
+
 int main()
 {
     SetConsoleOutputCP(CP_UTF8);
